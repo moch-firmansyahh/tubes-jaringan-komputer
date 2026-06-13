@@ -10,7 +10,10 @@ import os
 PROXY_HOST = "0.0.0.0"
 PROXY_PORT = 8080
 
-WEB_SERVER_HOST = "127.0.0.1"
+print("=== KONFIGURASI PROXY ===")
+WEB_SERVER_HOST = input("Masukkan IP Laptop Web Server (contoh: 192.168.1.5, biarkan kosong untuk 127.0.0.1): ")
+if not WEB_SERVER_HOST:
+    WEB_SERVER_HOST = "127.0.0.1"
 WEB_SERVER_PORT = 8000
 
 CONNECT_TIMEOUT = 5   # detik untuk koneksi ke web server

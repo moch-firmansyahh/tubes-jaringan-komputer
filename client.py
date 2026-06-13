@@ -19,7 +19,11 @@ def http_client():
     print("1. Request via Proxy (Port 8080) - Disarankan untuk test Caching")
     print("2. Request langsung ke Web Server (Port 8000)")
     
-    pilihan = input("Pilih target (1/2): ")
+    target_ip = input("Masukkan IP Target (contoh: 192.168.1.5, biarkan kosong untuk 127.0.0.1): ")
+    if not target_ip:
+        target_ip = DEFAULT_HOST
+
+    pilihan = input("Pilih target port (1/2): ")
     if pilihan == '1':
         target_port = PROXY_PORT
         print(f"[*] Target diset ke Proxy (Port {target_port})")
@@ -35,7 +39,7 @@ def http_client():
         path = '/' + path
     
     # Membangun HTTP GET Request
-    request_line = f"GET {path} HTTP/1.1\r\nHost: {DEFAULT_HOST}\r\nConnection: close\r\n\r\n"
+    request_line = f"GET {path} HTTP/1.1\r\nHost: {target_ip}\r\nConnection: close\r\n\r\n"
     
     # Membuat TCP Socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -45,7 +49,8 @@ def http_client():
         # Menghitung Waktu Request
         start_time = time.time()
         
-        client_socket.connect((DEFAULT_HOST, target_port))
+        print(f"[*] Menghubungi {target_ip}:{target_port}...")
+        client_socket.connect((target_ip, target_port))
         client_socket.sendall(request_line.encode('utf-8'))
         
         # Menerima Response
@@ -73,7 +78,7 @@ def http_client():
         print("\n" + "="*50)
         print("               HASIL REQUEST HTTP               ")
         print("="*50)
-        print(f"[>] Target URL   : http://{DEFAULT_HOST}:{target_port}{path}")
+        print(f"[>] Target URL   : http://{target_ip}:{target_port}{path}")
         print(f"[>] Waktu Respon : {response_time:.2f} ms")
         print(f"[>] Total Bytes  : {len(response)} bytes")
         print("-" * 50)
@@ -111,6 +116,10 @@ def udp_qos_client():
     print("\n--- Fitur UDP QoS Test Client ---")
     print("Fitur ini akan mengirimkan paket UDP ke Echo Server (Port 9000)")
     
+    target_ip = input("Masukkan IP Web Server tujuan (biarkan kosong untuk 127.0.0.1): ")
+    if not target_ip:
+        target_ip = DEFAULT_HOST
+
     try:
         jumlah_paket = int(input("Masukkan jumlah paket yang ingin dikirim (misal: 10): "))
     except ValueError:
@@ -120,7 +129,7 @@ def udp_qos_client():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.settimeout(2.0)  # Timeout 2 detik per paket
     
-    target = (DEFAULT_HOST, UDP_ECHO_PORT)
+    target = (target_ip, UDP_ECHO_PORT)
     
     paket_dikirim = 0
     paket_diterima = 0
