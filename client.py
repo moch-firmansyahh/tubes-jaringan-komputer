@@ -16,23 +16,14 @@ if ip_input.strip():
 
 def http_client():
     print("\n--- Fitur HTTP Client (TCP) ---")
-    print("1. Request via Proxy (Port 8080) - Disarankan untuk test Caching")
-    print("2. Request langsung ke Web Server (Port 8000)")
-    
-    target_ip = input("Masukkan IP Target (contoh: 192.168.1.5, biarkan kosong untuk 127.0.0.1): ")
+    print("Semua request HTTP dikirim melalui Proxy Server (Port 8080).")
+
+    target_ip = input("Masukkan IP Proxy Server (biarkan kosong untuk 127.0.0.1): ")
     if not target_ip:
         target_ip = DEFAULT_HOST
 
-    pilihan = input("Pilih target port (1/2): ")
-    if pilihan == '1':
-        target_port = PROXY_PORT
-        print(f"[*] Target diset ke Proxy (Port {target_port})")
-    elif pilihan == '2':
-        target_port = HTTP_SERVER_PORT
-        print(f"[*] Target diset ke Web Server langsung (Port {target_port})")
-    else:
-        print("[!] Pilihan tidak valid.")
-        return
+    target_port = PROXY_PORT
+    print(f"[*] Target diset ke Proxy (Port {target_port})")
 
     path = input("Masukkan path file yang ingin di-request (misal: /HTML/index.html): ")
     if not path.startswith('/'):
@@ -74,6 +65,12 @@ def http_client():
             headers = response.decode('utf-8', errors='replace')
             body_bytes = b""
             
+        # Kalkulasi Throughput
+        if response_time > 0:
+            throughput = (len(response) * 8) / response_time
+        else:
+            throughput = 0.0
+
         # Menampilkan Informasi
         print("\n" + "="*50)
         print("               HASIL REQUEST HTTP               ")
@@ -81,6 +78,7 @@ def http_client():
         print(f"[>] Target URL   : http://{target_ip}:{target_port}{path}")
         print(f"[>] Waktu Respon : {response_time:.2f} ms")
         print(f"[>] Total Bytes  : {len(response)} bytes")
+        print(f"[>] Throughput   : {throughput:.2f} kbps")
         print("-" * 50)
         print("--- HTTP HEADERS ---")
         print(headers)
@@ -134,6 +132,7 @@ def udp_qos_client():
     paket_dikirim = 0
     paket_diterima = 0
     total_rtt = 0.0
+    rtt_list = []  # Menyimpan RTT tiap paket untuk kalkulasi min, max, dan jitter
     
     print("\nMemulai pengujian QoS...")
     print("-" * 50)
@@ -154,6 +153,7 @@ def udp_qos_client():
             # Hitung RTT dalam millisecond
             rtt = (waktu_terima - waktu_kirim) * 1000
             total_rtt += rtt
+            rtt_list.append(rtt)
             paket_diterima += 1
             
             print(f"Reply dari {server[0]}: seq={i} rtt={rtt:.2f} ms data=\"{data.decode('utf-8', errors='replace')}\"")
@@ -169,15 +169,26 @@ def udp_qos_client():
     
     # Hitung Statistik
     packet_loss = ((paket_dikirim - paket_diterima) / paket_dikirim) * 100 if paket_dikirim > 0 else 0
-    avg_rtt = (total_rtt / paket_diterima) if paket_diterima > 0 else 0
-    
+
+    if rtt_list:
+        avg_rtt = total_rtt / len(rtt_list)
+        min_rtt = min(rtt_list)
+        max_rtt = max(rtt_list)
+        # Jitter = rata-rata selisih absolut antar RTT berurutan
+        jitter = sum(abs(rtt_list[i] - rtt_list[i - 1]) for i in range(1, len(rtt_list))) / (len(rtt_list) - 1) if len(rtt_list) > 1 else 0.0
+    else:
+        avg_rtt = min_rtt = max_rtt = jitter = 0.0
+
     print("-" * 50)
     print("              HASIL PENGUJIAN QoS               ")
     print("-" * 50)
     print(f"Paket Dikirim  : {paket_dikirim}")
     print(f"Paket Diterima : {paket_diterima}")
     print(f"Packet Loss    : {packet_loss:.2f}%")
-    print(f"Rata-rata RTT  : {avg_rtt:.2f} ms")
+    print(f"RTT Min        : {min_rtt:.2f} ms")
+    print(f"RTT Avg        : {avg_rtt:.2f} ms")
+    print(f"RTT Max        : {max_rtt:.2f} ms")
+    print(f"Jitter         : {jitter:.2f} ms")
     print("=" * 50)
 
 def main():

@@ -3,10 +3,10 @@ import threading
 import datetime
 import sys
 import os
+import hashlib
+import time
 
-# ─────────────────────────────────────────────
-#  Konfigurasi
-# ─────────────────────────────────────────────
+# Konfigurasi
 PROXY_HOST = "0.0.0.0"
 PROXY_PORT = 8080
 
@@ -19,24 +19,25 @@ WEB_SERVER_PORT = 8000
 CONNECT_TIMEOUT = 5   # detik untuk koneksi ke web server
 RECV_TIMEOUT    = 10  # detik untuk menerima respons dari web server
 
-# ─────────────────────────────────────────────
-#  Cache: dict  path → bytes (full HTTP response)
-# ─────────────────────────────────────────────
-cache: dict = {}
+# Cache: File-based caching
+CACHE_DIR = "cache_dir"
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
 cache_lock = threading.Lock()
 
+def get_cache_filename(path):
+    # Buat hash MD5 dari path agar aman jadi nama file
+    filename = hashlib.md5(path.encode('utf-8')).hexdigest()
+    return os.path.join(CACHE_DIR, filename)
 
-# ─────────────────────────────────────────────
-#  Helper: logging
-# ─────────────────────────────────────────────
+
+# Helper: logging
 def log(tag: str, msg: str):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [{tag}] {msg}", flush=True)
 
 
-# ─────────────────────────────────────────────
-#  Helper: parse request line
-# ─────────────────────────────────────────────
+# Helper: parse request line
 def parse_request(raw: bytes):
     """Kembalikan (method, path) atau (None, None) jika malformed."""
     try:
@@ -49,9 +50,7 @@ def parse_request(raw: bytes):
         return None, None
 
 
-# ─────────────────────────────────────────────
-#  Helper: build error responses
-# ─────────────────────────────────────────────
+# Helper: build error responses
 def make_error_response(code: int, text: str) -> bytes:
     body = f"<h1>{code} {text}</h1>".encode()
     header = (
@@ -64,9 +63,7 @@ def make_error_response(code: int, text: str) -> bytes:
     return header.encode() + body
 
 
-# ─────────────────────────────────────────────
-#  Forward request ke Web Server
-# ─────────────────────────────────────────────
+# Forward request ke Web Server
 def forward_to_server(raw_request: bytes) -> bytes:
     """
     Kirim raw_request ke web server, kembalikan response bytes.
@@ -88,10 +85,9 @@ def forward_to_server(raw_request: bytes) -> bytes:
     return response
 
 
-# ─────────────────────────────────────────────
-#  Handler per koneksi client
-# ─────────────────────────────────────────────
+# Handler per koneksi client
 def handle_client(conn: socket.socket, addr):
+    start_time = time.time()
     client_ip = addr[0]
     try:
         # Terima request dari client
@@ -119,15 +115,20 @@ def handle_client(conn: socket.socket, addr):
 
         # Normalisasi path untuk cache key
         cache_key = path if path else "/"
+        cache_file = get_cache_filename(cache_key)
 
         # ── Cek cache ──
+        cached = None
         with cache_lock:
-            cached = cache.get(cache_key)
+            if os.path.exists(cache_file):
+                with open(cache_file, "rb") as f:
+                    cached = f.read()
 
         if cached is not None:
             # CACHE HIT
             conn.sendall(cached)
-            log("PROXY", f"{client_ip} {method} {path} - HIT (from cache, {len(cached)} bytes)")
+            elapsed_ms = (time.time() - start_time) * 1000
+            log("PROXY", f"{client_ip} {method} {path} - HIT (from cache, {len(cached)} bytes) - Waktu Respons: {elapsed_ms:.2f} ms")
             return
 
         # CACHE MISS → forward ke server
@@ -158,13 +159,15 @@ def handle_client(conn: socket.socket, addr):
             first_line = response.split(b"\r\n")[0].decode()
             if "200" in first_line:
                 with cache_lock:
-                    cache[cache_key] = response
+                    with open(cache_file, "wb") as f:
+                        f.write(response)
                 log("PROXY", f"{client_ip} {method} {path} - cached response ({len(response)} bytes)")
         except Exception:
             pass  # Jika tidak bisa parse, tetap kirimkan response
 
         conn.sendall(response)
-        log("PROXY", f"{client_ip} {method} {path} - forwarded response ({len(response)} bytes)")
+        elapsed_ms = (time.time() - start_time) * 1000
+        log("PROXY", f"{client_ip} {method} {path} - forwarded response ({len(response)} bytes) - Waktu Respons: {elapsed_ms:.2f} ms")
 
     except socket.timeout:
         log("PROXY", f"{client_ip} - client timeout")
@@ -177,9 +180,7 @@ def handle_client(conn: socket.socket, addr):
             pass
 
 
-# ─────────────────────────────────────────────
-#  Main proxy loop
-# ─────────────────────────────────────────────
+# Main proxy loop
 def run_proxy():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -198,9 +199,7 @@ def run_proxy():
             log("PROXY", f"Accept error: {e}")
 
 
-# ─────────────────────────────────────────────
-#  Entry Point
-# ─────────────────────────────────────────────
+# Entry Point
 if __name__ == "__main__":
     try:
         run_proxy()
